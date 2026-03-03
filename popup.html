@@ -10,7 +10,7 @@
     <main class="app">
       <header class="app__header">
         <h1>Universal Video Finder</h1>
-        <p>Works on any site (including program.mmgmena.com) for MP4 / M3U8 / Blob links.</p>
+        <p>Scan any site (including program.mmgmena.com) and download discovered media as MP4.</p>
       </header>
 
       <button id="scanBtn" class="btn btn--primary">Scan for Videos</button>
@@ -19,8 +19,7 @@
       <ul id="results" class="results"></ul>
 
       <footer class="note">
-        M3U8: copy ready FFmpeg command.<br />
-        Blob: request save from page context.
+        Download MP4 tries direct extraction for MP4/Blob and playlist assembly for supported M3U8 streams.
       </footer>
     </main>
 

@@ -119,19 +119,127 @@
     return uniqByUrl(found);
   };
 
-  const downloadBlobAsMp4 = async (blobUrl, filename) => {
-    const response = await fetch(blobUrl);
-    const mediaBlob = await response.blob();
-    const objectUrl = URL.createObjectURL(mediaBlob);
-
+  const triggerDownload = (blob, filename) => {
+    const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+  };
 
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 3000);
+  const parseMapUri = (line) => {
+    const match = line.match(/URI="([^"]+)"/i);
+    return match?.[1] || "";
+  };
+
+  const resolveUrl = (baseUrl, raw) => {
+    try {
+      return new URL(raw, baseUrl).toString();
+    } catch {
+      return "";
+    }
+  };
+
+  const fetchText = async (url) => {
+    const res = await fetch(url, { credentials: "include" });
+    if (!res.ok) throw new Error(`Failed to fetch playlist: ${res.status}`);
+    return res.text();
+  };
+
+  const parseMediaPlaylist = (playlistText, playlistUrl) => {
+    const lines = playlistText.split("\n").map((line) => line.trim()).filter(Boolean);
+    const segments = [];
+    let initSegment = "";
+
+    for (const line of lines) {
+      if (line.startsWith("#EXT-X-MAP:")) {
+        const mapUri = parseMapUri(line);
+        if (mapUri) initSegment = resolveUrl(playlistUrl, mapUri);
+        continue;
+      }
+
+      if (!line.startsWith("#")) {
+        const segUrl = resolveUrl(playlistUrl, line);
+        if (segUrl) segments.push(segUrl);
+      }
+    }
+
+    return { initSegment, segments };
+  };
+
+  const pickVariantFromMaster = (masterText, masterUrl) => {
+    const lines = masterText.split("\n").map((line) => line.trim()).filter(Boolean);
+    const variants = [];
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (!line.startsWith("#EXT-X-STREAM-INF")) continue;
+
+      const bwMatch = line.match(/BANDWIDTH=(\d+)/i);
+      const bandwidth = bwMatch ? Number(bwMatch[1]) : 0;
+      const next = lines[i + 1] || "";
+      if (next && !next.startsWith("#")) {
+        variants.push({ bandwidth, url: resolveUrl(masterUrl, next) });
+      }
+    }
+
+    variants.sort((a, b) => b.bandwidth - a.bandwidth);
+    return variants[0]?.url || "";
+  };
+
+  const downloadM3U8AsMp4 = async (m3u8Url, filename) => {
+    const firstText = await fetchText(m3u8Url);
+    const basePlaylistUrl = firstText.includes("#EXT-X-STREAM-INF")
+      ? pickVariantFromMaster(firstText, m3u8Url)
+      : m3u8Url;
+
+    if (!basePlaylistUrl) {
+      throw new Error("No playable variant found in master playlist.");
+    }
+
+    const mediaText = basePlaylistUrl === m3u8Url ? firstText : await fetchText(basePlaylistUrl);
+    const { initSegment, segments } = parseMediaPlaylist(mediaText, basePlaylistUrl);
+
+    if (!segments.length) {
+      throw new Error("No media segments found in playlist.");
+    }
+
+    const fmp4Like = initSegment || segments.some((url) => /\.(m4s|mp4)(\?|$)/i.test(url));
+    if (!fmp4Like) {
+      throw new Error("This playlist is likely TS-based. In-browser direct MP4 conversion is limited. Use FFmpeg for reliable conversion.");
+    }
+
+    const binaries = [];
+
+    if (initSegment) {
+      const initRes = await fetch(initSegment, { credentials: "include" });
+      if (!initRes.ok) throw new Error("Failed to fetch init segment.");
+      binaries.push(await initRes.arrayBuffer());
+    }
+
+    for (const segmentUrl of segments) {
+      const segRes = await fetch(segmentUrl, { credentials: "include" });
+      if (!segRes.ok) throw new Error(`Failed to fetch segment: ${segmentUrl}`);
+      binaries.push(await segRes.arrayBuffer());
+    }
+
+    const mp4Blob = new Blob(binaries, { type: "video/mp4" });
+    triggerDownload(mp4Blob, filename);
+  };
+
+  const downloadAsMp4 = async (url, type, filename) => {
+    if (type === "m3u8") {
+      await downloadM3U8AsMp4(url, filename);
+      return;
+    }
+
+    const response = await fetch(url, { credentials: "include" });
+    if (!response.ok) throw new Error(`Failed to fetch media: ${response.status}`);
+    const mediaBlob = await response.blob();
+    triggerDownload(mediaBlob, filename);
   };
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -140,12 +248,13 @@
       return true;
     }
 
-    if (message?.type === "DOWNLOAD_BLOB" && typeof message.url === "string") {
+    if (message?.type === "DOWNLOAD_AS_MP4" && typeof message.url === "string") {
       const filename = typeof message.filename === "string" && message.filename.trim()
         ? message.filename.trim()
         : `video-${Date.now()}.mp4`;
+      const type = typeof message.mediaType === "string" ? message.mediaType : inferType(message.url);
 
-      downloadBlobAsMp4(message.url, filename)
+      downloadAsMp4(message.url, type, filename)
         .then(() => sendResponse({ ok: true }))
         .catch((error) => sendResponse({ ok: false, error: String(error) }));
       return true;

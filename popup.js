@@ -28,34 +28,16 @@ const createActionButton = (text, className, onClick) => {
   return button;
 };
 
-const downloadDirect = (video) => {
-  const ext = ["mp4", "webm", "mov"].includes(video.type) ? video.type : "mp4";
-
-  chrome.downloads.download(
-    {
-      url: video.url,
-      filename: `video-${Date.now()}.${ext}`,
-      saveAs: true
-    },
-    () => {
-      if (chrome.runtime.lastError) {
-        window.open(video.url, "_blank", "noopener,noreferrer");
-      }
-    }
-  );
-};
-
-const getFfmpegCommand = (m3u8Url) => `ffmpeg -i "${m3u8Url}" -c copy "output.mp4"`;
-
-const handleBlobDownload = async (tabId, video) => {
+const requestDownloadAsMp4 = async (tabId, video) => {
   const res = await chrome.tabs.sendMessage(tabId, {
-    type: "DOWNLOAD_BLOB",
+    type: "DOWNLOAD_AS_MP4",
     url: video.url,
+    mediaType: video.type,
     filename: `video-${Date.now()}.mp4`
   });
 
   if (!res?.ok) {
-    throw new Error(res?.error || "Blob download failed");
+    throw new Error(res?.error || "Download as MP4 failed");
   }
 };
 
@@ -84,29 +66,13 @@ const renderVideos = (videos, tabId) => {
     const actions = document.createElement("div");
     actions.className = "item__actions";
 
-    const primaryLabel = video.type === "m3u8"
-      ? "Copy FFmpeg"
-      : video.type === "blob"
-        ? "Save Blob"
-        : "Download";
-
-    const primaryBtn = createActionButton(primaryLabel, "btn--secondary", async () => {
+    const primaryBtn = createActionButton("Download MP4", "btn--secondary", async () => {
       try {
-        if (video.type === "m3u8") {
-          await copyText(getFfmpegCommand(video.url));
-          setStatus("FFmpeg command copied.");
-          return;
-        }
-
-        if (video.type === "blob") {
-          await handleBlobDownload(tabId, video);
-          setStatus("Blob save started.");
-          return;
-        }
-
-        downloadDirect(video);
+        setStatus("Preparing MP4 download...");
+        await requestDownloadAsMp4(tabId, video);
+        setStatus("MP4 download started.");
       } catch (error) {
-        setStatus(`Action failed: ${String(error)}`, true);
+        setStatus(`Download failed: ${String(error)}`, true);
       }
     });
 

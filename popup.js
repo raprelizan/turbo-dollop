@@ -28,6 +28,21 @@ const createActionButton = (text, className, onClick) => {
   return button;
 };
 
+const fallbackDirectDownload = (video) => {
+  chrome.downloads.download(
+    {
+      url: video.url,
+      filename: `video-${Date.now()}.mp4`,
+      saveAs: true
+    },
+    () => {
+      if (chrome.runtime.lastError) {
+        window.open(video.url, "_blank", "noopener,noreferrer");
+      }
+    }
+  );
+};
+
 const requestDownloadAsMp4 = async (tabId, video) => {
   const res = await chrome.tabs.sendMessage(tabId, {
     type: "DOWNLOAD_AS_MP4",
@@ -37,7 +52,9 @@ const requestDownloadAsMp4 = async (tabId, video) => {
   });
 
   if (!res?.ok) {
-    throw new Error(res?.error || "Download as MP4 failed");
+    const err = new Error(res?.error || "Download as MP4 failed");
+    err.code = res?.code || "UNKNOWN";
+    throw err;
   }
 };
 
@@ -72,7 +89,15 @@ const renderVideos = (videos, tabId) => {
         await requestDownloadAsMp4(tabId, video);
         setStatus("MP4 download started.");
       } catch (error) {
-        setStatus(`Download failed: ${String(error)}`, true);
+        const msg = String(error);
+
+        if (video.type !== "m3u8") {
+          fallbackDirectDownload(video);
+          setStatus(`Fallback used (direct download). Reason: ${msg}`, true);
+          return;
+        }
+
+        setStatus(`Download failed: ${msg}`, true);
       }
     });
 

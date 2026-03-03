@@ -143,11 +143,38 @@
     }
   };
 
-  const fetchText = async (url) => {
-    const res = await fetch(url, { credentials: "include" });
-    if (!res.ok) throw new Error(`Failed to fetch playlist: ${res.status}`);
-    return res.text();
+  const fetchWithRetries = async (url, asText = false) => {
+    const errors = [];
+
+    const attempts = [
+      () => fetch(url, { credentials: "include", mode: "cors" }),
+      () => fetch(url, { credentials: "omit", mode: "cors" }),
+      () => fetch(url, { credentials: "include", mode: "same-origin" })
+    ];
+
+    for (const attempt of attempts) {
+      try {
+        const response = await attempt();
+        if (!response.ok) {
+          errors.push(`HTTP ${response.status}`);
+          continue;
+        }
+
+        return asText ? response.text() : response.blob();
+      } catch (error) {
+        errors.push(String(error));
+      }
+    }
+
+    throw new Error(`Failed to fetch resource. Details: ${errors.join(" | ")}`);
   };
+
+  const fetchArrayBufferWithRetries = async (url) => {
+    const blob = await fetchWithRetries(url, false);
+    return blob.arrayBuffer();
+  };
+
+  const fetchText = async (url) => fetchWithRetries(url, true);
 
   const parseMediaPlaylist = (playlistText, playlistUrl) => {
     const lines = playlistText.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -209,21 +236,17 @@
 
     const fmp4Like = initSegment || segments.some((url) => /\.(m4s|mp4)(\?|$)/i.test(url));
     if (!fmp4Like) {
-      throw new Error("This playlist is likely TS-based. In-browser direct MP4 conversion is limited. Use FFmpeg for reliable conversion.");
+      throw new Error("Playlist appears TS-based; browser MP4 assembly is limited. Use FFmpeg for reliable conversion.");
     }
 
     const binaries = [];
 
     if (initSegment) {
-      const initRes = await fetch(initSegment, { credentials: "include" });
-      if (!initRes.ok) throw new Error("Failed to fetch init segment.");
-      binaries.push(await initRes.arrayBuffer());
+      binaries.push(await fetchArrayBufferWithRetries(initSegment));
     }
 
     for (const segmentUrl of segments) {
-      const segRes = await fetch(segmentUrl, { credentials: "include" });
-      if (!segRes.ok) throw new Error(`Failed to fetch segment: ${segmentUrl}`);
-      binaries.push(await segRes.arrayBuffer());
+      binaries.push(await fetchArrayBufferWithRetries(segmentUrl));
     }
 
     const mp4Blob = new Blob(binaries, { type: "video/mp4" });
@@ -236,9 +259,7 @@
       return;
     }
 
-    const response = await fetch(url, { credentials: "include" });
-    if (!response.ok) throw new Error(`Failed to fetch media: ${response.status}`);
-    const mediaBlob = await response.blob();
+    const mediaBlob = await fetchWithRetries(url, false);
     triggerDownload(mediaBlob, filename);
   };
 
@@ -256,7 +277,11 @@
 
       downloadAsMp4(message.url, type, filename)
         .then(() => sendResponse({ ok: true }))
-        .catch((error) => sendResponse({ ok: false, error: String(error) }));
+        .catch((error) => sendResponse({
+          ok: false,
+          code: "FETCH_FAILED",
+          error: String(error)
+        }));
       return true;
     }
 

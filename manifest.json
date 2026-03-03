@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Circle Video Finder",
-  "version": "1.1.0",
-  "description": "Scans Circle.so pages for accessible video sources (MP4/M3U8/blob) and helps you save them.",
+  "name": "Universal Video Source Finder",
+  "version": "1.2.0",
+  "description": "Detects accessible MP4/M3U8/blob video sources on websites and helps save them.",
   "permissions": [
     "activeTab",
     "storage",
@@ -10,16 +10,16 @@
     "downloads"
   ],
   "host_permissions": [
-    "*://*.circle.so/*"
+    "<all_urls>"
   ],
   "action": {
-    "default_title": "Circle Video Finder",
+    "default_title": "Universal Video Source Finder",
     "default_popup": "popup.html"
   },
   "content_scripts": [
     {
       "matches": [
-        "*://*.circle.so/*"
+        "<all_urls>"
       ],
       "js": [
         "content_script.js"

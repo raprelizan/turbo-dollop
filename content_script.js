@@ -1,5 +1,6 @@
 (() => {
   const SOURCE_EXTENSIONS = [".mp4", ".m3u8", ".webm", ".mov"];
+  const URL_PATTERN = /(https?:\/\/[^\s"'<>]+|blob:[^\s"'<>]+)/gi;
 
   const normalizeUrl = (raw) => {
     if (!raw || typeof raw !== "string") return "";
@@ -22,34 +23,41 @@
     return "unknown";
   };
 
+  const isLikelyVideoUrl = (url) => {
+    const lower = url.toLowerCase();
+    if (lower.startsWith("blob:")) return true;
+    return SOURCE_EXTENSIONS.some((ext) => lower.includes(ext));
+  };
+
   const labelFor = (entry, index) => {
     const source = entry.from ? ` (${entry.from})` : "";
     return `Video ${index + 1}${source}`;
+  };
+
+  const pushIfVideo = (items, url, from) => {
+    const normalized = normalizeUrl(url);
+    if (!normalized || !isLikelyVideoUrl(normalized)) return;
+
+    items.push({
+      url: normalized,
+      type: inferType(normalized),
+      from
+    });
   };
 
   const collectFromVideoTags = (items) => {
     const videos = document.querySelectorAll("video");
 
     videos.forEach((video) => {
-      const direct = normalizeUrl(video.currentSrc || video.src || "");
-      if (direct) {
-        items.push({ url: direct, type: inferType(direct), from: "<video>" });
-      }
+      pushIfVideo(items, video.currentSrc || video.src || "", "<video>");
 
       video.querySelectorAll("source").forEach((source) => {
-        const sourceUrl = normalizeUrl(source.src || source.getAttribute("src") || "");
-        if (sourceUrl) {
-          items.push({
-            url: sourceUrl,
-            type: inferType(sourceUrl),
-            from: "<source>"
-          });
-        }
+        pushIfVideo(items, source.src || source.getAttribute("src") || "", "<source>");
       });
     });
   };
 
-  const collectFromLinks = (items) => {
+  const collectFromAttributes = (items) => {
     const selectors = [
       "a[href]",
       "link[href]",
@@ -59,27 +67,29 @@
       "[src]"
     ];
 
-    const nodes = document.querySelectorAll(selectors.join(","));
-
-    nodes.forEach((node) => {
-      const candidates = [
+    document.querySelectorAll(selectors.join(",")).forEach((node) => {
+      [
         node.getAttribute("href"),
         node.getAttribute("src"),
         node.getAttribute("data-src"),
         node.getAttribute("data-url")
-      ].filter(Boolean);
+      ].filter(Boolean).forEach((candidate) => {
+        pushIfVideo(items, candidate, node.tagName.toLowerCase());
+      });
+    });
+  };
 
-      candidates.forEach((candidate) => {
-        const url = normalizeUrl(candidate);
-        if (!url) return;
-        const lower = url.toLowerCase();
+  const collectFromInlineText = (items) => {
+    const blocks = document.querySelectorAll("script:not([src]), style, body");
 
-        if (lower.startsWith("blob:") || SOURCE_EXTENSIONS.some((ext) => lower.includes(ext))) {
-          items.push({
-            url,
-            type: inferType(url),
-            from: node.tagName.toLowerCase()
-          });
+    blocks.forEach((node) => {
+      const text = node.textContent || "";
+      if (!text) return;
+
+      const matches = text.match(URL_PATTERN) || [];
+      matches.forEach((match) => {
+        if (isLikelyVideoUrl(match)) {
+          pushIfVideo(items, match, `<${node.tagName.toLowerCase()}> text`);
         }
       });
     });
@@ -87,26 +97,25 @@
 
   const uniqByUrl = (items) => {
     const seen = new Set();
-    const result = [];
 
-    items.forEach((item) => {
-      if (!item.url || seen.has(item.url)) return;
-      seen.add(item.url);
-      result.push(item);
-    });
-
-    return result.map((item, index) => ({
-      id: `video-${index + 1}`,
-      title: labelFor(item, index),
-      ...item
-    }));
+    return items
+      .filter((item) => {
+        if (!item.url || seen.has(item.url)) return false;
+        seen.add(item.url);
+        return true;
+      })
+      .map((item, index) => ({
+        id: `video-${index + 1}`,
+        title: labelFor(item, index),
+        ...item
+      }));
   };
 
   const scanForVideos = () => {
     const found = [];
     collectFromVideoTags(found);
-    collectFromLinks(found);
-
+    collectFromAttributes(found);
+    collectFromInlineText(found);
     return uniqByUrl(found);
   };
 
@@ -127,20 +136,18 @@
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "SCAN_VIDEOS") {
-      const videos = scanForVideos();
-      sendResponse({ ok: true, videos });
+      sendResponse({ ok: true, videos: scanForVideos() });
       return true;
     }
 
     if (message?.type === "DOWNLOAD_BLOB" && typeof message.url === "string") {
       const filename = typeof message.filename === "string" && message.filename.trim()
         ? message.filename.trim()
-        : `circle-video-${Date.now()}.mp4`;
+        : `video-${Date.now()}.mp4`;
 
       downloadBlobAsMp4(message.url, filename)
         .then(() => sendResponse({ ok: true }))
         .catch((error) => sendResponse({ ok: false, error: String(error) }));
-
       return true;
     }
 

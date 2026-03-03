@@ -29,10 +29,12 @@ const createActionButton = (text, className, onClick) => {
 };
 
 const downloadDirect = (video) => {
+  const ext = ["mp4", "webm", "mov"].includes(video.type) ? video.type : "mp4";
+
   chrome.downloads.download(
     {
       url: video.url,
-      filename: `circle-video-${Date.now()}.${video.type === "unknown" ? "mp4" : video.type}`,
+      filename: `video-${Date.now()}.${ext}`,
       saveAs: true
     },
     () => {
@@ -49,7 +51,7 @@ const handleBlobDownload = async (tabId, video) => {
   const res = await chrome.tabs.sendMessage(tabId, {
     type: "DOWNLOAD_BLOB",
     url: video.url,
-    filename: `circle-video-${Date.now()}.mp4`
+    filename: `video-${Date.now()}.mp4`
   });
 
   if (!res?.ok) {
@@ -57,15 +59,15 @@ const handleBlobDownload = async (tabId, video) => {
   }
 };
 
-const renderVideos = async (videos, tabId) => {
+const renderVideos = (videos, tabId) => {
   clearResults();
 
   if (!videos.length) {
-    setStatus("No video sources found on this page.");
+    setStatus("No MP4/M3U8/Blob sources found on this page.");
     return;
   }
 
-  setStatus(`Found ${videos.length} video source(s).`);
+  setStatus(`Found ${videos.length} source(s).`);
 
   videos.forEach((video) => {
     const li = document.createElement("li");
@@ -92,13 +94,13 @@ const renderVideos = async (videos, tabId) => {
       try {
         if (video.type === "m3u8") {
           await copyText(getFfmpegCommand(video.url));
-          setStatus("FFmpeg command copied. Run it in your terminal to create MP4.");
+          setStatus("FFmpeg command copied.");
           return;
         }
 
         if (video.type === "blob") {
           await handleBlobDownload(tabId, video);
-          setStatus("Blob was requested for download as MP4.");
+          setStatus("Blob save started.");
           return;
         }
 
@@ -111,7 +113,7 @@ const renderVideos = async (videos, tabId) => {
     const copyBtn = createActionButton("Copy URL", "btn--ghost", async () => {
       try {
         await copyText(video.url);
-        setStatus("Copied video URL.");
+        setStatus("Copied source URL.");
       } catch {
         setStatus("Could not copy URL.", true);
       }
@@ -125,7 +127,7 @@ const renderVideos = async (videos, tabId) => {
 
 scanBtn.addEventListener("click", async () => {
   try {
-    setStatus("Scanning page...");
+    setStatus("Scanning active page...");
     clearResults();
 
     const tab = await withActiveTab();
@@ -140,6 +142,6 @@ scanBtn.addEventListener("click", async () => {
     chrome.storage.local.set({ lastScanResults: videos });
     renderVideos(videos, tab.id);
   } catch {
-    setStatus("Unable to scan this tab. Open a Circle page and retry.", true);
+    setStatus("Unable to scan this tab. Reload the page and retry.", true);
   }
 });

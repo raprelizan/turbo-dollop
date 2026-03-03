@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Universal Video Source Finder",
+  "version": "1.2.0",
+  "description": "Detects accessible MP4/M3U8/blob video sources on websites and helps save them.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "declarativeNetRequest",
+    "downloads"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "Universal Video Source Finder",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content_script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

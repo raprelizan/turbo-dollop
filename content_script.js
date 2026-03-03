@@ -217,6 +217,19 @@
     return variants[0]?.url || "";
   };
 
+
+
+  const downloadTsPlaylistAsPseudoMp4 = async (segments, filename) => {
+    const binaries = [];
+
+    for (const segmentUrl of segments) {
+      binaries.push(await fetchArrayBufferWithRetries(segmentUrl));
+    }
+
+    const mergedTsBlob = new Blob(binaries, { type: "video/mp2t" });
+    triggerDownload(mergedTsBlob, filename);
+  };
+
   const downloadM3U8AsMp4 = async (m3u8Url, filename) => {
     const firstText = await fetchText(m3u8Url);
     const basePlaylistUrl = firstText.includes("#EXT-X-STREAM-INF")
@@ -236,7 +249,8 @@
 
     const fmp4Like = initSegment || segments.some((url) => /\.(m4s|mp4)(\?|$)/i.test(url));
     if (!fmp4Like) {
-      throw new Error("Playlist appears TS-based; browser MP4 assembly is limited. Use FFmpeg for reliable conversion.");
+      await downloadTsPlaylistAsPseudoMp4(segments, filename);
+      return;
     }
 
     const binaries = [];

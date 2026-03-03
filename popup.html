@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Circle Video Finder</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app__header">
+        <h1>Circle Video Finder</h1>
+        <p>Scan current Circle page for accessible video sources.</p>
+      </header>
+
+      <button id="scanBtn" class="btn btn--primary">Scan for Videos</button>
+
+      <section id="status" class="status" aria-live="polite"></section>
+      <ul id="results" class="results"></ul>
+
+      <footer class="note">
+        <strong>Note:</strong> If a result is <code>.m3u8</code>, use it in an HLS tool like
+        <code>ffmpeg</code> if you have permission.
+      </footer>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

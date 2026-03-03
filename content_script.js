@@ -3,6 +3,8 @@
 
   const normalizeUrl = (raw) => {
     if (!raw || typeof raw !== "string") return "";
+    if (raw.startsWith("blob:")) return raw;
+
     try {
       return new URL(raw, window.location.href).toString();
     } catch {
@@ -12,6 +14,7 @@
 
   const inferType = (url) => {
     const lower = url.toLowerCase();
+    if (lower.startsWith("blob:")) return "blob";
     if (lower.includes(".m3u8") || lower.includes("application/vnd.apple.mpegurl")) return "m3u8";
     if (lower.includes(".mp4")) return "mp4";
     if (lower.includes(".webm")) return "webm";
@@ -71,7 +74,7 @@
         if (!url) return;
         const lower = url.toLowerCase();
 
-        if (SOURCE_EXTENSIONS.some((ext) => lower.includes(ext))) {
+        if (lower.startsWith("blob:") || SOURCE_EXTENSIONS.some((ext) => lower.includes(ext))) {
           items.push({
             url,
             type: inferType(url),
@@ -107,10 +110,37 @@
     return uniqByUrl(found);
   };
 
+  const downloadBlobAsMp4 = async (blobUrl, filename) => {
+    const response = await fetch(blobUrl);
+    const mediaBlob = await response.blob();
+    const objectUrl = URL.createObjectURL(mediaBlob);
+
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 3000);
+  };
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "SCAN_VIDEOS") {
       const videos = scanForVideos();
       sendResponse({ ok: true, videos });
+      return true;
+    }
+
+    if (message?.type === "DOWNLOAD_BLOB" && typeof message.url === "string") {
+      const filename = typeof message.filename === "string" && message.filename.trim()
+        ? message.filename.trim()
+        : `circle-video-${Date.now()}.mp4`;
+
+      downloadBlobAsMp4(message.url, filename)
+        .then(() => sendResponse({ ok: true }))
+        .catch((error) => sendResponse({ ok: false, error: String(error) }));
+
       return true;
     }
 

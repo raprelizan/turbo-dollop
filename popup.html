@@ -10,7 +10,7 @@
     <main class="app">
       <header class="app__header">
         <h1>Circle Video Finder</h1>
-        <p>Scan current Circle page for accessible video sources.</p>
+        <p>Find MP4 / M3U8 / Blob sources from the current Circle page.</p>
       </header>
 
       <button id="scanBtn" class="btn btn--primary">Scan for Videos</button>
@@ -19,8 +19,8 @@
       <ul id="results" class="results"></ul>
 
       <footer class="note">
-        <strong>Note:</strong> If a result is <code>.m3u8</code>, use it in an HLS tool like
-        <code>ffmpeg</code> if you have permission.
+        M3U8: we copy an FFmpeg command to convert to MP4.<br />
+        Blob: we request download from inside the page context.
       </footer>
     </main>
 

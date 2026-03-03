@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Circle Video Finder",
-  "version": "1.0.0",
-  "description": "Scans Circle.so course pages for accessible video sources (MP4/M3U8) and helps you open or download them.",
+  "version": "1.1.0",
+  "description": "Scans Circle.so pages for accessible video sources (MP4/M3U8/blob) and helps you save them.",
   "permissions": [
     "activeTab",
     "storage",
